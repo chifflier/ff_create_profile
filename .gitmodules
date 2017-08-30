@@ -1,0 +1,3 @@
+[submodule "dejsonlz4"]
+	path = dejsonlz4
+	url = https://github.com/avih/dejsonlz4.git

@@ -6,7 +6,33 @@
 #
 ## Tested with firefox 54
 #
-## TODO: configure search engine
+# Copyright (c) 2017 Pierre Chifflier <chifflier@wzdftpd.net>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+# 3. Neither the name of mosquitto nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
 
 set -e
 set -u
@@ -15,6 +41,11 @@ set -u
 ## all variables can be overriden in the 'local_ff_vars' file
 
 profile="$1"
+
+# requires jq, openssl (debian packages), and dejsonlz4 (should be configured as submodule)
+SEARCH_ENGINE="DuckDuckGo"
+
+# addons must be pre-downloaded and placed in the $XPI_CACHE directory
 ADDONS="addon-722-latest.xpi addon-627512-latest.xpi"
 
 NOSCRIPT_XPI="https://addons.mozilla.org/firefox/downloads/latest/noscript/addon-722-latest.xpi"
@@ -30,6 +61,10 @@ FIREJAIL=/usr/bin/firejail
 NSSBL="$HOME/CODE/SHELL/NSS_BLACKLIST/blacklist_all_certs"
 PROFDIR="$HOME/.mozilla/firefox"
 XPI_CACHE="./xpi_cache"
+
+JQ="/usr/bin/jq"
+JSONLZ4="./dejsonlz4/src/jsonlz4"
+DEJSONLZ4="./dejsonlz4/src/dejsonlz4"
 
 ## --------------------------------
 
@@ -57,6 +92,20 @@ ff_set() {
 # usage: nss_set_trust "DigiCert High Assurance EV Root CA" "C,,"
 nss_set_trust() {
   certutil -M -d "$profile_path" -n "$1" -t "$2"
+}
+
+
+calculate_search_hash() {
+  profile="$1"
+  provider="$2"
+  disclaimer="By modifying this file, I agree that I am doing so only within \
+Firefox itself, using official, user-driven search engine selection processes, \
+and in a way which does not circumvent user consent. I acknowledge that any \
+attempt to change this file from outside of Firefox is a malicious act, and \
+will be responded to accordingly."
+  appName="Firefox"
+  disclaimer="By modifying this file, I agree that I am doing so only within $appName itself, using official, user-driven search engine selection processes, and in a way which does not circumvent user consent. I acknowledge that any attempt to change this file from outside of $appName is a malicious act, and will be responded to accordingly."
+  printf "$profile$provider$disclaimer" | openssl sha256 -binary | base64
 }
 
 
@@ -108,6 +157,7 @@ fi
 
 touch "$profile_path"/prefs.js
 
+# no enough (see later for real search engine setup)
 ff_set "browser.search.defaulturl" '"https://duckduckgo.com/"' "$profile_path"
 ff_set "browser.search.defaultenginename" '"DuckDuckGo"' "$profile_path"
 ff_set "browser.startup.homepage" '"https://start.duckduckgo.com/"' "$profile_path"
@@ -165,6 +215,23 @@ mkdir -p "$profile_path/extensions" ||:
 for addon in $ADDONS; do
   install_addon "$XPI_CACHE/$addon" "$profile_path/extensions/"
 done
+
+
+# search engine
+if [ -x "$JSONLZ4" -o -x "$DEJSONLZ4" ]; then
+  SEARCHJSON="./search.json"
+  TMPFILE=`mktemp -t search.json.XXXXXX`
+  # $DEJSONLZ4 "$profile_path/search.json.mozlz4" > "$SEARCHJSON"
+  HASH=`calculate_search_hash "$profile" "$SEARCH_ENGINE"`
+  $JQ ".metaData.current = \"$SEARCH_ENGINE\" | .metaData.hash = \"$HASH\"" "$SEARCHJSON" >"$TMPFILE"
+  $JSONLZ4 "$TMPFILE" "$profile_path/search.json.mozlz4"
+  # rm -f -- "$TMPFILE"
+else
+  echo ""
+  echo "jsonlz4 and dejsonlz4 not found"
+  echo "***** DEFAULT SEARCH ENGINE NOT CONFIGURED *****"
+  echo ""
+fi
 
 
 # start once to enable extensions
