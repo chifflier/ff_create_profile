@@ -182,8 +182,8 @@ ff_set "device.sensors.enabled" 'false' "$profile_path"
 ff_set "dom.battery.enabled" 'false' "$profile_path"
 ff_set "dom.enable_performance" 'false' "$profile_path"
 ff_set "geo.enabled" 'false' "$profile_path"
-ff_set "privacy.donottrackheader.enabled" 'false' "$profile_path"
-ff_set "privacy.trackingprotection.enabled" 'false' "$profile_path"
+ff_set "privacy.donottrackheader.enabled" 'true' "$profile_path"
+ff_set "privacy.trackingprotection.enabled" 'true' "$profile_path"
 
 # SSL/TLS
 ff_set "security.tls.enable_0rtt_data" 'false' "$profile_path"
