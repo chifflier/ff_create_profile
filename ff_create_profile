@@ -226,7 +226,7 @@ if [ -x "$JSONLZ4" -o -x "$DEJSONLZ4" ]; then
   HASH=`calculate_search_hash "$profile" "$SEARCH_ENGINE"`
   $JQ ".metaData.current = \"$SEARCH_ENGINE\" | .metaData.hash = \"$HASH\"" "$SEARCHJSON" >"$TMPFILE"
   $JSONLZ4 "$TMPFILE" "$profile_path/search.json.mozlz4"
-  # rm -f -- "$TMPFILE"
+  rm -f -- "$TMPFILE"
 else
   echo ""
   echo "jsonlz4 and dejsonlz4 not found"
