@@ -58,6 +58,7 @@ TOGGLE_CIPHERS_XPI="https://addons.mozilla.org/firefox/downloads/latest/toggle-c
 
 FF=/usr/bin/firefox
 FIREJAIL=/usr/bin/firejail
+# https://github.com/chifflier/nss_blacklist
 NSSBL="$HOME/CODE/SHELL/NSS_BLACKLIST/blacklist_all_certs"
 PROFDIR="$HOME/.mozilla/firefox"
 XPI_CACHE="./xpi_cache"
