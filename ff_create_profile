@@ -1,0 +1,171 @@
+#!/bin/sh
+#
+# Create a new firefox profile, preconfigured and with some extensions
+#
+# Usage: ./ff_create_profile profilename
+#
+## Tested with firefox 54
+#
+## TODO: configure search engine
+
+set -e
+set -u
+# set -x
+
+## all variables can be overriden in the 'local_ff_vars' file
+
+profile="$1"
+ADDONS="addon-722-latest.xpi addon-627512-latest.xpi"
+
+NOSCRIPT_XPI="https://addons.mozilla.org/firefox/downloads/latest/noscript/addon-722-latest.xpi"
+PRIV_XPI="https://addons.mozilla.org/firefox/downloads/latest/privacy-settings/addon-627512-latest.xpi"
+SSLEUTH_XPI="https://addons.mozilla.org/firefox/downloads/latest/ssleuth/addon-479492-latest.xpi"
+# Ghostery ?
+TOGGLE_CIPHERS_XPI="https://addons.mozilla.org/firefox/downloads/latest/toggle-cipher-suites/addon-474842-latest.xpi"
+
+## --------------------------------
+
+FF=/usr/bin/firefox
+FIREJAIL=/usr/bin/firejail
+NSSBL="$HOME/CODE/SHELL/NSS_BLACKLIST/blacklist_all_certs"
+PROFDIR="$HOME/.mozilla/firefox"
+XPI_CACHE="./xpi_cache"
+
+## --------------------------------
+
+if [ -e local_ff_vars ]; then
+  source local_ff_vars
+fi
+
+## --------------------------------
+
+get_profile_path() {
+  set -e
+  cat ~/.mozilla/firefox/profiles.ini |grep -A4 "Name=$1" | grep Path | sed 's/Path=//'
+}
+
+# usage: ff_set "browser.search.defaulturl" '"https://duckduckgo.com/"' "$profile_path"
+ff_set() {
+  #sed -i 's/user_pref("'$1'",.*);/user_pref("'$1'",'$2');/' $3/user.js
+  # remove previous entry
+  sed -i '/^user_pref("'$1'",.*);/d' $3/prefs.js
+  # insert new one
+  grep -q $1 $3/prefs.js || echo "user_pref(\"$1\",$2);" >> $3/prefs.js
+}
+
+
+# usage: nss_set_trust "DigiCert High Assurance EV Root CA" "C,,"
+nss_set_trust() {
+  certutil -M -d "$profile_path" -n "$1" -t "$2"
+}
+
+
+
+# -------------------------- xpi tools ---------------------------------
+
+
+# see also http://kb.mozillazine.org/Installing_extensions
+
+get_addon_id_from_xpi () { #path to .xpi file
+    addon_id_line=`unzip -p $1 install.rdf | egrep '<em:id>' -m 1`
+    addon_id=`echo $addon_id_line | sed "s/.*>\(.*\)<.*/\1/"`
+    echo "$addon_id"
+}
+
+get_addon_name_from_xpi () { #path to .xpi file
+    addon_name_line=`unzip -p $1 install.rdf | egrep '<em:name>' -m 1`
+    addon_name=`echo $addon_name_line | sed "s/.*>\(.*\)<.*/\1/"`
+    echo "$addon_name"
+}
+
+# Installs .xpi given by relative path
+# to the extensions path given
+install_addon () {
+    xpi="${PWD}/${1}"
+    extensions_path=$2
+    new_filename=`get_addon_id_from_xpi $xpi`.xpi
+    new_filepath="${extensions_path}${new_filename}"
+    addon_name=`get_addon_name_from_xpi $xpi`
+    if [ -f "$new_filepath" ]; then
+        echo "File already exists: $new_filepath"
+        echo "Skipping installation for addon $addon_name."
+    else
+        cp "$xpi" "$new_filepath"
+    fi
+}
+
+
+
+## --------------------------------
+
+$FF -CreateProfile "$profile"
+
+profile_path=$PROFDIR/`get_profile_path "$profile"`
+if [ ! -d "$profile_path" ]; then
+  echo "Could not get profile path"
+  exit 1
+fi
+
+touch "$profile_path"/prefs.js
+
+ff_set "browser.search.defaulturl" '"https://duckduckgo.com/"' "$profile_path"
+ff_set "browser.search.defaultenginename" '"DuckDuckGo"' "$profile_path"
+ff_set "browser.startup.homepage" '"https://start.duckduckgo.com/"' "$profile_path"
+ff_set "browser.download.useDownloadDir" 'false' "$profile_path"
+ff_set "signon.rememberSignons" 'false' "$profile_path"
+
+# disable telemetry
+ff_set "extensions.shield-recipe-client.first_run" 'false' "$profile_path"
+ff_set "toolkit.telemetry.reportingpolicy.firstRun" 'false' "$profile_path"
+ff_set "toolkit.telemetry.archive.enabled" 'false' "$profile_path"
+ff_set "toolkit.telemetry.enabled" 'false' "$profile_path"
+ff_set "toolkit.telemetry.unified" 'false' "$profile_path"
+ff_set "toolkit.telemetry.server" '""' "$profile_path"
+ff_set "browser.crashReports.unsubmittedCheck.enabled" 'false' "$profile_path"
+ff_set "browser.crashReports.unsubmittedCheck.autoSubmit" 'false' "$profile_path"
+ff_set "datareporting.policy.dataSubmissionEnabled" 'false' "$profile_path"
+
+# privacy settings
+ff_set "camera.control.face_detection.enabled" 'false' "$profile_path"
+ff_set "device.sensors.enabled" 'false' "$profile_path"
+ff_set "dom.battery.enabled" 'false' "$profile_path"
+ff_set "dom.enable_performance" 'false' "$profile_path"
+ff_set "geo.enabled" 'false' "$profile_path"
+ff_set "privacy.donottrackheader.enabled" 'false' "$profile_path"
+ff_set "privacy.trackingprotection.enabled" 'false' "$profile_path"
+
+# SSL/TLS
+ff_set "security.tls.enable_0rtt_data" 'false' "$profile_path"
+ff_set "security.tls.insecure_fallback_hosts.use_static_list" 'false' "$profile_path"
+ff_set "security.tls.unrestricted_rc4_fallback" 'false' "$profile_path"
+
+# disable non-DH ciphersuites
+ff_set "security.ssl3.rsa_des_ede3_sha" 'false' "$profile_path"
+ff_set "security.ssl3.rsa_aes_128_sha" 'false' "$profile_path"
+ff_set "security.ssl3.rsa_aes_256_sha" 'false' "$profile_path"
+
+"$NSSBL" "$profile_path"
+
+## to list trusted certificates:
+# certutil -d "$profile_path" -L
+
+## DuckDuckGo:
+nss_set_trust "DigiCert High Assurance EV Root CA" "C,,"
+nss_set_trust "DigiCert Global Root CA" "C,,"
+# Letsencrypt
+nss_set_trust "DST Root CA X3" "C,,"
+# Google
+nss_set_trust "GeoTrust Global CA" "C,,"
+
+## extensions
+mkdir -p "$profile_path/extensions" ||:
+## $FIREJAIL $FF --no-remote -P "$profile" "$NOSCRIPT_XPI"
+
+
+for addon in $ADDONS; do
+  install_addon "$XPI_CACHE/$addon" "$profile_path/extensions/"
+done
+
+
+# start once to enable extensions
+$FIREJAIL $FF --no-remote -P "$profile" "about:addons" "$SSLEUTH_XPI" "$TOGGLE_CIPHERS_XPI"
